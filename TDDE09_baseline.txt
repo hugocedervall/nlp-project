@@ -1,0 +1,10 @@
+Evaluation on the dev section of the English Web Treebank (EWT):
+
+Tagging accuracy: 88.1%
+Unlabelled attachment score with gold tags:  68.0%
+Unlabelled attachment score with predicted tags: 62.2%
+
+
+Github: https://github.com/hugocedervall/nlp-project
+
+Functions have been put in separate python files. The main script used for training and evaluating the system is found in the Jupyter notebook. In order to replicate the results, simply run each cell in the notebook.
