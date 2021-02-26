@@ -1,4 +1,19 @@
 import copy
+
+
+class Parser(object):
+
+    def predict(self, words, tags):
+        raise NotImplementedError
+
+
+
+class TrivialParser(Parser):
+
+    def predict(self, words, tags):
+        return [0] + list(range(len(words)-1))
+
+
 class ArcStandardParser(Parser):
 
     MOVES = tuple(range(3))
