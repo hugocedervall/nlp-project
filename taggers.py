@@ -45,3 +45,4 @@ class FixedWindowTagger(Tagger):
             pred_tags.append(res)
             out.append((words[i], list(self.vocab_tags.keys())[res]))
         return out
+

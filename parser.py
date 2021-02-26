@@ -56,7 +56,7 @@ class ArcStandardParser(Parser):
         return not ArcStandardParser.valid_moves(config)  # no valid moves means final config
 
 
-class FixedWindowParser2(ArcStandardParser):
+class FixedWindowParserHugges(ArcStandardParser):
 
     def __init__(self, vocab_words, vocab_tags, word_dim=50, tag_dim=10, hidden_dim=180):
         self.vocab_words = vocab_words
@@ -104,69 +104,71 @@ class FixedWindowParser2(ArcStandardParser):
         return config[2]
 
 
-class FixedWindowModel(nn.Module):
+class FixedWindowParser(ArcStandardParser):
 
-    def __init__(self, embedding_specs, hidden_dim, output_dim, pretrained=False, frozen=False):
-        super().__init__()
-        # list to keep track of nr of features that map to each embedding layer
+    def __init__(self, vocab_words, vocab_tags, word_dim=50, tag_dim=10, hidden_dim=180):
+        embedding_specs = [(3, len(vocab_words), word_dim), (3, len(vocab_tags), tag_dim)]
+        output_dim = 3  # nr of possible moves
+        self.vocab_words = vocab_words
+        self.vocab_tags = vocab_tags
+        self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
+        self.id_to_tag = make_id_to_tag(label_vocab)
 
-        self.concat_emb_len = 0
-        self.index_list = []
-        self.emb_len_list = []
+    def featurize(self, words, tags, config):
+        feats = []
 
-        for i, _, emb in embedding_specs:
-            self.index_list.append(i)
-            self.concat_emb_len += i * emb
-            self.emb_len_list.append(i * emb)
-
-        if pretrained:  # hard coded for this case
-
-            word_embedding = embedding = nn.Embedding.from_pretrained(glove, freeze=frozen)
-            tag_embedding = nn.Embedding(embedding_specs[1][1], embedding_specs[1][2], padding_idx=0)
-
-            # store embeddings in ModuleList
-            self.embeddings = nn.ModuleList([word_embedding, tag_embedding])
-
-            # init weights with std 10^-2
-            nn.init.normal_(self.embeddings[1].weight, std=1e-2)
-
+        if config[0] < len(config[2]):
+            feats.append(words[config[0]])
         else:
-            # store embeddings in ModuleList
-            self.embeddings = nn.ModuleList(
-                [nn.Embedding(num_words, embedding_dim, padding_idx=0) for (i, num_words, embedding_dim) in
-                 embedding_specs])
+            feats.append(self.vocab_words[PAD])
 
-            # init weights with std 10^-2
-            for emb in self.embeddings:
-                nn.init.normal_(emb.weight, std=1e-2)
+        if len(config[1]) > 0:
+            feats.append(words[config[1][-1]])
+        else:
+            feats.append(self.vocab_words[PAD])
 
-        # calc dimensions of concat embeddings
-        concat_dim = 0
-        for i, num_words, embedding_dim in embedding_specs:
-            concat_dim += i * embedding_dim
+        if len(config[1]) > 1:
+            feats.append(words[config[1][-2]])
+        else:
+            feats.append(self.vocab_words[PAD])
 
-        # feed forward
-        self.linear1 = nn.Linear(concat_dim, hidden_dim)
-        self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(hidden_dim, output_dim)
+        if config[0] < len(config[2]):
+            feats.append(tags[config[0]])
+        else:
+            feats.append(self.vocab_tags[PAD])
 
-    def forward(self, features):
-        batch_size = len(features)
+        if len(config[1]) > 0:
+            feats.append(tags[config[1][-1]])
+        else:
+            feats.append(self.vocab_tags[PAD])
 
-        concat_embeddings = torch.zeros((batch_size, 0))
-        curr = 0
-        for i, emb in enumerate(self.embeddings):
-            concat_embeddings = torch.cat((concat_embeddings,
-                                           emb(features[:, curr:curr + self.index_list[i]]).view(batch_size,
-                                                                                                 self.emb_len_list[i])),
-                                          dim=1)
-            # temp.append(emb(features[:, curr:curr + self.index_list[i]]).view(batch_size, self.emb_len_list[i]))
-            curr += self.index_list[i]
+        if len(config[1]) > 1:
+            feats.append(tags[config[1][-2]])
+        else:
+            feats.append(self.vocab_tags[PAD])
 
-        # concat_embeddings = torch.cat(temp, dim=1).view(batch_size, self.concat_emb_len)
+        return torch.tensor(feats)
 
-        res = self.linear1(concat_embeddings)
-        res = self.relu(res)
-        res = self.linear2(res)
+    def valid_argmax(self, config, pred):
+        best_score = None
+        best_move = -1
+        moves = self.valid_moves(config)
+        for i, p in enumerate(pred[0]):
+            if i in moves and (best_score is None or p.item() > best_score):
+                best_score = p.item()
+                best_move = i
+        return best_move
 
-        return res
+    def predict(self, words, tags):
+
+        config = self.initial_config(len(words))
+        word_ids = [self.vocab_words[word] if word in self.vocab_words else self.vocab_words[UNK] for word in words]
+        tag_ids = [self.vocab_tags[tag] if tag in self.vocab_tags else self.vocab_tags[UNK] for tag in tags]
+
+        while not self.is_final_config(config):
+            feats = self.featurize(word_ids, tag_ids, config)
+            pred_move = self.valid_argmax(config, self.model.forward(feats.unsqueeze(dim=0)))
+            # print("Doing move: ", pred_move)
+            config = self.next_config(config, pred_move)
+
+        return config[2]
