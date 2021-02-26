@@ -1,7 +1,9 @@
 
 # Author: Marco Kuhlman
 class Dataset():
-
+    """
+    container class for parser data in the CoNLL-U format that the project uses to distribute its data.
+    """
     ROOT = ('<root>', '<root>', 0)  # Pseudo-root
 
     def __init__(self, filename):
