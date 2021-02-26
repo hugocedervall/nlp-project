@@ -1,3 +1,6 @@
+PAD = '<pad>'
+UNK = '<unk>'
+
 def make_vocabs(gold_data):
     word_vocab = {}
     label_vocab = {}
