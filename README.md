@@ -1,4 +1,4 @@
-# nlp-project
+# Standard project: Tagger–parser pipeline
 
 ## Baseline
 
