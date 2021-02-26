@@ -41,8 +41,7 @@ class FixedWindowTagger(Tagger):
             f = self.featurize(words, i, pred_tags)
             res = self.model.forward(f.unsqueeze(0))
 
-            res = torch.argmax(self.model.softmax(res))
+            res = torch.argmax(res)
             pred_tags.append(res)
             out.append((words[i], list(self.vocab_tags.keys())[res]))
         return out
-

@@ -76,7 +76,6 @@ def training_examples_parser(vocab_words, vocab_tags, gold_data, parser, batch_s
         tags = list(map(lambda x: vocab_tags[x[1]], sentence))
         heads = [head for _, _, head in sentence]
 
-        print(sentence)
         for config, move in oracle_moves(heads):
             if len(feats) == batch_size:
                 yield torch.stack(feats), torch.tensor(ys)
