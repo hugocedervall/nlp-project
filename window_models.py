@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 
-class FixedWindowModel(nn.Module):
+class FixedWindowModelBra(nn.Module):
 
     def __init__(self, embedding_specs, hidden_dim, output_dim):
         super().__init__()
@@ -36,7 +36,7 @@ class FixedWindowModel(nn.Module):
         return res
 
 
-class FixedWindowModelAntons(nn.Module):
+class FixedWindowModel(nn.Module):
 
     def __init__(self, embedding_specs, hidden_dim, output_dim, pretrained=False, frozen=False):
         super().__init__()

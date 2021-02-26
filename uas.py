@@ -19,13 +19,13 @@ def uas(parser, gold_data):
     return acc/nr_words
 
 def accuracy(tagger, gold_data):
-    acc = 0
-    nr_words = 0
-    for sentence in gold_data: 
-        words = [word for word, _ in sentence]
-        labels = [label for _, label in sentence]
-        preds = tagger.predict(words)
-        acc += sum(pred == label for pred, label in zip(preds, labels)) 
-        nr_words += len(words)
-    
-    return acc/nr_words
+    correct = 0
+    count = 0
+    for sentence in gold_data:
+        predicted_sentence = tagger.predict(sentence)
+        for i in range(len(predicted_sentence)):
+            if sentence[i][1] == predicted_sentence[i][1]:
+                correct += 1
+            count += 1
+        
+    return correct/count

@@ -4,6 +4,8 @@ import torch.nn as nn
 
 from window_models import FixedWindowModel
 
+PAD = '<pad>'
+UNK = '<unk>'
 
 class Parser(object):
 
@@ -112,7 +114,6 @@ class FixedWindowParser(ArcStandardParser):
         self.vocab_words = vocab_words
         self.vocab_tags = vocab_tags
         self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
-        self.id_to_tag = make_id_to_tag(label_vocab)
 
     def featurize(self, words, tags, config):
         feats = []

@@ -1,5 +1,7 @@
 import torch 
 
+from parser import ArcStandardParser
+
 # ===========================
 # Functions for parser (L3)
 # ===========================
@@ -37,8 +39,8 @@ def check_all_arcs_from_t_have_been_assigned(t, heads, gold_heads):
     return True
         
 
-def oracle_moves(parser, gold_heads):
-    parser = parser()
+def oracle_moves(gold_heads):
+    parser = ArcStandardParser()
     config = parser.initial_config(len(gold_heads))
 
     while not parser.is_final_config(config):
@@ -73,7 +75,8 @@ def training_examples_parser(vocab_words, vocab_tags, gold_data, parser, batch_s
         words = list(map(lambda x: vocab_words[x[0]], sentence))
         tags = list(map(lambda x: vocab_tags[x[1]], sentence))
         heads = [head for _, _, head in sentence]
-        
+
+        print(sentence)
         for config, move in oracle_moves(heads):
             if len(feats) == batch_size:
                 yield torch.stack(feats), torch.tensor(ys)
