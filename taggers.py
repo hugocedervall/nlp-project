@@ -1,6 +1,8 @@
 import torch
 
-from window_models import FixedWindowModel
+from window_models import FixedWindowModel, FixedWindowModelLstm
+
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
 class Tagger(object):
@@ -14,9 +16,11 @@ class FixedWindowTagger(Tagger):
     def __init__(self, vocab_words, vocab_tags, output_dim, word_dim=50, tag_dim=10, hidden_dim=100):
         self.vocab_words = vocab_words
         self.vocab_tags = vocab_tags
-        embedding_specs = [(3, len(vocab_words), word_dim), (1, len(vocab_tags), tag_dim)]
-        self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
-
+        #embedding_specs = [(3, len(vocab_words), word_dim), (1, len(vocab_tags), tag_dim)]
+        embedding_specs = [(3, len(vocab_words), word_dim), (1, len(vocab_tags), word_dim)]
+        #self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
+        self.model = FixedWindowModelLstm(embedding_specs, hidden_dim, output_dim)
+        
     def featurize(self, words, i, pred_tags):
         if i == 0:
             f1 = 0
@@ -38,7 +42,7 @@ class FixedWindowTagger(Tagger):
         pred_tags = []
         out = []
         for i in range(len(words)):
-            f = self.featurize(words, i, pred_tags)
+            f = self.featurize(words, i, pred_tags).to(device)
             res = self.model.forward(f.unsqueeze(0))
 
             res = torch.argmax(res)

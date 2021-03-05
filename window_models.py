@@ -1,6 +1,8 @@
 import torch.nn as nn
 import torch
 
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
 class FixedWindowModelBra(nn.Module):
 
     def __init__(self, embedding_specs, hidden_dim, output_dim):
@@ -100,5 +102,53 @@ class FixedWindowModel(nn.Module):
         res = self.linear1(concat_embeddings)
         res = self.relu(res)
         res = self.linear2(res)
+
+        return res
+    
+    
+class FixedWindowModelLstm(nn.Module):
+
+    def __init__(self, embedding_specs, hidden_dim, output_dim, pretrained=False, frozen=False):
+        super().__init__()
+        
+        self.embeddings = nn.ModuleList()
+        self.embeddings2 = []
+        self.e_tot = 0
+        self.feature_count = 0
+        for m, n, e in embedding_specs:
+            self.e_tot += e * m
+            self.e = e
+            self.feature_count += m
+            embedding = nn.Embedding(n, e)
+            nn.init.normal_(embedding.weight, 0, 0.01)
+            self.embeddings.append(embedding)
+            self.embeddings2.append(m)
+            
+        self.lstm1 = nn.LSTM(self.e, hidden_dim, bidirectional=True, batch_first=True, num_layers=2)
+        
+        self.lstm2 = nn.LSTM(hidden_dim, hidden_dim, bidirectional=False, batch_first=True)
+        self.lin1 = nn.Linear(2*hidden_dim, output_dim)
+        self.relu = nn.ReLU()
+        self.softmax = nn.Softmax()
+        
+
+    def forward(self, features):
+        res = torch.zeros((features.shape[0], features.shape[1], self.e)).to(device)
+        index = 0
+        res_index = 0
+        for e, count in zip(self.embeddings, self.embeddings2):
+            a = e(features[:, index:index + count])
+
+            #a = a.reshape((a.shape[0], a.shape[1] * a.shape[2]))
+
+            res[:, res_index:res_index + a.shape[1], :] = a
+
+            res_index += a.shape[1]
+            index += count
+            
+        out, _ = self.lstm1(res)
+        #out, _ = self.lstm2(out)
+        
+        res = self.lin1(out[:,-1,:])
 
         return res
