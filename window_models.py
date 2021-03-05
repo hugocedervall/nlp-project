@@ -106,28 +106,46 @@ class FixedWindowModel(nn.Module):
         return res
     
     
+
+from gensim.models import KeyedVectors
+
+    
 class FixedWindowModelLstm(nn.Module):
 
     def __init__(self, embedding_specs, hidden_dim, output_dim, pretrained=False, frozen=False):
         super().__init__()
         
+        #Load pre-trained
+        filename='GoogleNews-vectors-negative300.bin'
+        word2vec_model = KeyedVectors.load_word2vec_format(filename, binary=True)
+        word2vec_weights = torch.FloatTensor(word2vec_model.wv.vectors)
+        word2vec_embedding = nn.Embedding.from_pretrained(word2vec_weights)
+        
         self.embeddings = nn.ModuleList()
         self.embeddings2 = []
         self.e_tot = 0
         self.feature_count = 0
-        for m, n, e in embedding_specs:
-            self.e_tot += e * m
-            self.e = e
+        self.e = 300
+        for m, n, e, pre_trained in embedding_specs:
             self.feature_count += m
-            embedding = nn.Embedding(n, e)
-            nn.init.normal_(embedding.weight, 0, 0.01)
-            self.embeddings.append(embedding)
-            self.embeddings2.append(m)
-            
-        self.lstm1 = nn.LSTM(self.e, hidden_dim, bidirectional=True, batch_first=True, num_layers=2)
+            if pre_trained:
+                #len(word2vec_model.wv.vectors)
+                self.embeddings.append(word2vec_embedding)
+                self.embeddings2.append(m)
+            else:
+                self.e_tot += e * m
+                embedding = nn.Embedding(n, e)
+                nn.init.normal_(embedding.weight, 0, 0.01)
+                self.embeddings.append(embedding)
+                self.embeddings2.append(m)
+        
+        num_layers=1
+        nr_directions = 2
+        self.lstm1 = nn.LSTM(self.e, hidden_dim, bidirectional=(nr_directions==2), batch_first=True, num_layers=num_layers)
+        self.dropout = nn.Dropout(p=0.2)
         
         self.lstm2 = nn.LSTM(hidden_dim, hidden_dim, bidirectional=False, batch_first=True)
-        self.lin1 = nn.Linear(2*hidden_dim, output_dim)
+        self.lin1 = nn.Linear(self.feature_count*nr_directions*hidden_dim, output_dim)
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
         
@@ -147,8 +165,53 @@ class FixedWindowModelLstm(nn.Module):
             index += count
             
         out, _ = self.lstm1(res)
+        out = self.dropout(out)
+        out = out.reshape((out.shape[0],out.shape[1]*out.shape[2]))
         #out, _ = self.lstm2(out)
         
-        res = self.lin1(out[:,-1,:])
+        #res = self.lin1(out[:,-1,:])
+        res = self.lin1(out)
 
+        return res
+    
+    
+class FixedWindowModelLstm2(nn.Module):
+
+    def __init__(self, embedding_specs, hidden_dim, output_dim, pretrained=False, frozen=False):
+        super().__init__()
+        
+        #self.embedding = nn.Embedding() 
+        #self.embeddings2 = []
+        #self.e_tot = 0
+        #self.feature_count = 0
+        
+        self.word_emb = nn.Embedding(embedding_specs[0][1], hidden_dim)    
+        #self.tag_emb = nn.Embedding()
+        
+        num_layers=1
+        nr_directions = 2
+        
+        self.lstm1 = nn.LSTM(hidden_dim, hidden_dim, bidirectional=(nr_directions==2), batch_first=True, num_layers=num_layers)
+        self.dropout = nn.Dropout(p=0.2)
+        self.lin1 = nn.Linear(nr_directions*hidden_dim, output_dim)
+
+        
+        #self.lstm2 = nn.LSTM(hidden_dim, hidden_dim, bidirectional=False, batch_first=True)
+        self.relu = nn.ReLU()
+        self.softmax = nn.Softmax()
+        
+
+    def forward(self, features):
+        res = self.word_emb(features)
+       
+        out, _ = self.lstm1(res)
+        out = self.dropout(out)
+
+        #out = out.reshape((out.shape[0],out.shape[1]*out.shape[2]))
+        #out, _ = self.lstm2(out)
+        
+        #print(out.shape)
+        
+        #res = self.lin1(out[:,-1,:])
+        res = self.lin1(out)
         return res

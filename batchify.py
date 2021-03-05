@@ -27,7 +27,31 @@ def training_examples_tagger(vocab_words, vocab_tags, gold_data, tagger, batch_s
     if len(feats) > 0:
         yield torch.stack(feats), torch.tensor(ys)
 
-
+def training_examples_tagger2(vocab_words, vocab_tags, gold_data, tagger, batch_size=100):
+    assert batch_size > 0
+    # max sequence length
+    max_len = 20
+    x = torch.zeros((batch_size, max_len)).long()
+    y = torch.zeros((batch_size, max_len)).long()
+    count = 0
+    for sentence in gold_data:
+        words = torch.Tensor(list(map(lambda x: vocab_words[x[0]], sentence))).long()
+        labels = torch.Tensor(list(map(lambda x: vocab_tags[x[1]], sentence))).long()
+        
+        # pad to max len
+        x[count,-len(words):] = words[:max_len]
+        y[count,-len(labels):] = labels[:max_len]
+        
+        count += 1
+        
+        if(count == batch_size):
+            yield x.long() ,y.long()
+            x = torch.zeros((batch_size, max_len))
+            y = torch.zeros((batch_size, max_len))
+            count = 0
+    if(count):
+        yield x[:count,:].long(), y[:count,:].long()
+        
 # ====================================
 # Functions for syntactic parser (L4)
 # ====================================
