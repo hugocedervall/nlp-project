@@ -52,47 +52,103 @@ class ArcStandardParser(Parser):
 
 class FixedWindowParser(ArcStandardParser):
 
-    def __init__(self, vocab_words, vocab_tags, word_dim=50, tag_dim=10, hidden_dim=400):
-        embedding_specs = [(3, len(vocab_words), word_dim), (3, len(vocab_tags), tag_dim)]
+    def __init__(self, vocab_words, vocab_tags, word_dim=50, tag_dim=10, hidden_dim=180):
+        embedding_specs = [(5, len(vocab_words), word_dim), (9, len(vocab_tags), tag_dim)]
         output_dim = 4  # nr of possible moves + error class
         self.vocab_words = vocab_words
         self.vocab_tags = vocab_tags
         self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
 
+    def find_child_feature(self, heads, word):
+        first = second = self.vocab_tags[PAD]
+        for child, parent in enumerate(heads):
+            if parent == word:
+                if first == PAD:
+                    first = child
+                else:
+                    second = child
+        return first, second
+
     def featurize(self, words, tags, config):
+        """14 different features based on https://www.aclweb.org/anthology/D08-1059/"""
+
         feats = []
+        buffer, stack, heads = config
 
-        if config[0] < len(config[2]):
-            feats.append(words[config[0]])
-        else:
-            feats.append(self.vocab_words[PAD])
+        ###### SURROUNDING WORDS #######
 
-        if len(config[1]) > 0:
-            feats.append(words[config[1][-1]])
-        else:
-            feats.append(self.vocab_words[PAD])
+        # 1st word in stack
+        if len(stack) > 0: feats.append(words[stack[-1]])
+        else: feats.append(self.vocab_words[PAD])
 
-        if len(config[1]) > 1:
-            feats.append(words[config[1][-2]])
-        else:
-            feats.append(self.vocab_words[PAD])
+        # 2nd word in stack
+        if len(stack) > 1: feats.append(words[stack[-2]])
+        else: feats.append(self.vocab_words[PAD])
 
-        if config[0] < len(config[2]):
-            feats.append(tags[config[0]])
+        # 3rd word in stack
+        if len(stack) > 2: feats.append(words[stack[-3]])
+        else: feats.append(self.vocab_words[PAD])
+
+        # 1st word in buffer
+        if buffer < len(heads): feats.append(words[buffer])
+        else: feats.append(self.vocab_words[PAD])
+
+        if buffer+1 < len(heads): feats.append(words[buffer])
+        else: feats.append(self.vocab_words[PAD])
+
+        ###### TAGS OF SURROUNDING WORDS #######
+        # 1st word in stack
+        if len(stack) > 0: feats.append(tags[stack[-1]])
+        else: feats.append(self.vocab_tags[PAD])
+
+        # 2nd word in stack
+        if len(stack) > 1: feats.append(tags[stack[-2]])
+        else: feats.append(self.vocab_tags[PAD])
+
+        # 3rd word in stack
+        if len(stack) > 2: feats.append(tags[stack[-3]])
+        else: feats.append(self.vocab_tags[PAD])
+
+        # 1st word in buffer
+        if buffer < len(heads): feats.append(tags[buffer])
+        else: feats.append(self.vocab_tags[PAD])
+
+        if buffer + 1 < len(heads): feats.append(tags[buffer+1])
+        else: feats.append(self.vocab_tags[PAD])
+
+        ###### TAGS OF CHILD FEATURES #######
+
+        # tags of left-most and right-most child of 1st word in stack
+        if len(stack) > 0:
+            first, second = self.find_child_feature(heads, stack[-1])
+            feats.append(tags[first])
+            feats.append(tags[second])
         else:
             feats.append(self.vocab_tags[PAD])
-
-        if len(config[1]) > 0:
-            feats.append(tags[config[1][-1]])
-        else:
             feats.append(self.vocab_tags[PAD])
 
-        if len(config[1]) > 1:
-            feats.append(tags[config[1][-2]])
+        # tags of left-most and right-most child of 2nd word in stack
+        if len(stack) > 1:
+            first, second = self.find_child_feature(heads, stack[-2])
+            feats.append(tags[first])
+            feats.append(tags[second])
         else:
+            feats.append(self.vocab_tags[PAD])
             feats.append(self.vocab_tags[PAD])
 
         return torch.tensor(feats)
+
+    def beam_argmax(self, config, pred, split_width):
+        moves = self.valid_moves(config)
+        pred = torch.nn.functional.log_softmax(pred)
+        temp = []
+        for i, p in enumerate(pred[0]):
+            if i in moves: # will remove invalid moves and error class
+                temp.append((p.item(), i))
+
+        temp.sort(key = lambda x: x[0], reverse=True)
+        # return the split_width top scoring moves (or less if not enough valid moves)
+        return temp[0:min(len(temp), split_width)]
 
     def valid_argmax(self, config, pred):
         best_score = None
@@ -104,16 +160,38 @@ class FixedWindowParser(ArcStandardParser):
                 best_move = i
         return best_move
 
-    def predict(self, words, tags):
+    def beam_search(self, config, word_ids, tag_ids, split_width, beam_width):
+        # branches is a list of (config, score) tuples
+        branches = [(config, 0)]  # init to 0 if beam greedy search. Init to 1 if best-first search
+
+        while not self.is_final_config(branches[0][0]):
+
+            new_branches = []
+            for branch_config, branch_score in branches:
+                feats = self.featurize(word_ids, tag_ids, branch_config)
+                pred_moves = self.beam_argmax(branch_config, self.model.forward(feats.unsqueeze(dim=0)),
+                                              split_width=split_width)
+
+                # TODO kan effektiviseras genom att först kolla score sedan räkna ut config
+
+                for pred in pred_moves:
+                    score = pred[0]
+                    move = pred[1]
+                    new_config = self.next_config(branch_config, move)
+                    new_branches.append((new_config,
+                                         branch_score + score))  # use '+' if beam greedy search. use '*' if best-first search
+
+            new_branches.sort(key=lambda x: x[1], reverse=True)  # sort on score
+            branches = new_branches[0:min(len(new_branches), beam_width)]
+
+        # return best branch (already sorted)
+        best_heads = branches[0][0][2]
+        return best_heads
+
+    def predict(self, words, tags, split_width=3, beam_width=8, beam_search=True):
 
         config = self.initial_config(len(words))
         word_ids = [self.vocab_words[word] if word in self.vocab_words else self.vocab_words[UNK] for word in words]
         tag_ids = [self.vocab_tags[tag] if tag in self.vocab_tags else self.vocab_tags[UNK] for tag in tags]
 
-        while not self.is_final_config(config):
-            feats = self.featurize(word_ids, tag_ids, config)
-            pred_move = self.valid_argmax(config, self.model.forward(feats.unsqueeze(dim=0)))
-            # print("Doing move: ", pred_move)
-            config = self.next_config(config, pred_move)
-
-        return config[2]
+        return self.beam_search(config, word_ids, tag_ids, split_width, beam_width)
