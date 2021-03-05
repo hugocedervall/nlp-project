@@ -14,8 +14,8 @@ class Parser(object):
 
 class ArcStandardParser(Parser):
     MOVES = tuple(range(3))
-
     SH, LA, RA = MOVES  # Parser moves are specified as integers.
+    error_class = 3 # error class representing a error state in beam search training
 
     @staticmethod
     def initial_config(num_words):
@@ -52,9 +52,9 @@ class ArcStandardParser(Parser):
 
 class FixedWindowParser(ArcStandardParser):
 
-    def __init__(self, vocab_words, vocab_tags, word_dim=50, tag_dim=10, hidden_dim=180):
+    def __init__(self, vocab_words, vocab_tags, word_dim=50, tag_dim=10, hidden_dim=400):
         embedding_specs = [(3, len(vocab_words), word_dim), (3, len(vocab_tags), tag_dim)]
-        output_dim = 3  # nr of possible moves
+        output_dim = 4  # nr of possible moves + error class
         self.vocab_words = vocab_words
         self.vocab_tags = vocab_tags
         self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)

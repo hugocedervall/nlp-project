@@ -76,14 +76,23 @@ def training_examples_parser(vocab_words, vocab_tags, gold_data, parser, batch_s
         tags = list(map(lambda x: vocab_tags[x[1]], sentence))
         heads = [head for _, _, head in sentence]
 
-        for config, move in oracle_moves(heads):
-            if len(feats) == batch_size:
+        for config, gold_move in oracle_moves(heads):
+            if len(feats) >= batch_size:
                 yield torch.stack(feats), torch.tensor(ys)
                 ys = []
                 feats = []
-                
+
+            # append gold move
             feats.append(parser.featurize(words, tags, config))
-            ys.append(move)
+            ys.append(gold_move)
+
+            # append 2 error moves
+            # OBS: batch size might become 2 data-points too large
+            valid_moves = ArcStandardParser.valid_moves(config)
+            for error_move in range(3):
+                if error_move != gold_move and error_move in valid_moves:
+                    feats.append(parser.featurize(words, tags, ArcStandardParser.next_config(config, error_move)))
+                    ys.append(ArcStandardParser.error_class)
             
     # yield last batch if not full       
     if len(feats) > 0:
