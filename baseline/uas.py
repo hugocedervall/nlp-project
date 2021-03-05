@@ -12,9 +12,6 @@ def uas(parser, gold_data):
             
         nr_words += len(words)-1 # skip psuedo root
         preds = parser.predict(words, labels)
-        #print("predicted:", preds)
-        #print("actual:", heads)
-
         acc += sum(pred == head for pred, head in zip(preds[1:], heads[1:]))  # skip psuedo root
     return acc/nr_words
 
