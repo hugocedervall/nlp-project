@@ -27,10 +27,9 @@ def training_examples_tagger(vocab_words, vocab_tags, gold_data, tagger, batch_s
     if len(feats) > 0:
         yield torch.stack(feats), torch.tensor(ys)
 
-def training_examples_tagger2(vocab_words, vocab_tags, gold_data, tagger, batch_size=100):
-    assert batch_size > 0
+def training_examples_tagger2(vocab_words, vocab_tags, gold_data, tagger, batch_size=100, max_len=20):
+    assert batch_size > 0 and max_len > 0
     # max sequence length
-    max_len = 20
     x = torch.zeros((batch_size, max_len)).long()
     y = torch.zeros((batch_size, max_len)).long()
     count = 0

@@ -180,38 +180,27 @@ class FixedWindowModelLstm2(nn.Module):
     def __init__(self, embedding_specs, hidden_dim, output_dim, pretrained=False, frozen=False):
         super().__init__()
         
-        #self.embedding = nn.Embedding() 
-        #self.embeddings2 = []
-        #self.e_tot = 0
-        #self.feature_count = 0
-        
         self.word_emb = nn.Embedding(embedding_specs[0][1], hidden_dim)    
-        #self.tag_emb = nn.Embedding()
         
         num_layers=1
-        nr_directions = 2
+        nr_directions = 1
         
         self.lstm1 = nn.LSTM(hidden_dim, hidden_dim, bidirectional=(nr_directions==2), batch_first=True, num_layers=num_layers)
         self.dropout = nn.Dropout(p=0.2)
         self.lin1 = nn.Linear(nr_directions*hidden_dim, output_dim)
-
         
-        #self.lstm2 = nn.LSTM(hidden_dim, hidden_dim, bidirectional=False, batch_first=True)
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
         
 
     def forward(self, features):
         res = self.word_emb(features)
-       
         out, _ = self.lstm1(res)
         out = self.dropout(out)
-
         #out = out.reshape((out.shape[0],out.shape[1]*out.shape[2]))
         #out, _ = self.lstm2(out)
-        
-        #print(out.shape)
-        
+                
         #res = self.lin1(out[:,-1,:])
         res = self.lin1(out)
+        # shape = (batch, seq_len, classes)
         return res
