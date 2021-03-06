@@ -1,6 +1,6 @@
 import torch
 
-from window_models import FixedWindowModel, FixedWindowModelLstm
+from window_models import FixedWindowModel, LstmTaggerModel
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -19,7 +19,7 @@ class FixedWindowTagger(Tagger):
         #embedding_specs = [(3, len(vocab_words), word_dim), (1, len(vocab_tags), tag_dim)]
         embedding_specs = [(3, len(vocab_words), word_dim), (1, len(vocab_tags), word_dim)]
         #self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
-        self.model = FixedWindowModelLstm(embedding_specs, hidden_dim, output_dim)
+        self.model = LstmTaggerModel(embedding_specs, hidden_dim, output_dim)
         
     def featurize(self, words, i, pred_tags):
         if i == 0:
