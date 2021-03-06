@@ -185,22 +185,29 @@ class FixedWindowModelLstm2(nn.Module):
         num_layers=1
         nr_directions = 1
         
-        self.lstm1 = nn.LSTM(hidden_dim, hidden_dim, bidirectional=(nr_directions==2), batch_first=True, num_layers=num_layers)
-        self.dropout = nn.Dropout(p=0.2)
-        self.lin1 = nn.Linear(nr_directions*hidden_dim, output_dim)
+        self.lstm1 = nn.LSTM(hidden_dim, 300, batch_first = True, bidirectional=True, num_layers = 2)
+        self.lin1 = nn.Linear(600, output_dim)
         
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
         
 
-    def forward(self, features):
-        res = self.word_emb(features)
-        out, _ = self.lstm1(res)
-        out = self.dropout(out)
-        #out = out.reshape((out.shape[0],out.shape[1]*out.shape[2]))
-        #out, _ = self.lstm2(out)
-                
-        #res = self.lin1(out[:,-1,:])
-        res = self.lin1(out)
-        # shape = (batch, seq_len, classes)
+    def forward(self, features, test=False):
+        
+        if test:
+            #print(features.shape)
+            res = self.word_emb(features)
+            #print(res.shape)
+            out, _ = self.lstm1(res)
+            #print(out.shape)
+            res = self.lin1(out)
+            #print(res.shape)
+        else:
+            #print(features.shape)
+            res = self.word_emb(features)
+            #print(res.shape)
+            out, _ = self.lstm1(res)
+            #print(out.shape)
+            res = self.lin1(out)
+            #print(res.shape)
         return res

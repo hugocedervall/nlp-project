@@ -31,6 +31,7 @@ def accuracy_sentences(tagger, gold_data):
     correct = count = 0
     for sentence in gold_data:
         pred = tagger.predict_sentence(sentence)
+        #print(pred)
         for i in range(len(pred)):
             #print(pred[i], sentence[i][1])
             if sentence[i][1] == pred[i]:

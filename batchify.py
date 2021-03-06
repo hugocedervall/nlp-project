@@ -27,19 +27,18 @@ def training_examples_tagger(vocab_words, vocab_tags, gold_data, tagger, batch_s
     if len(feats) > 0:
         yield torch.stack(feats), torch.tensor(ys)
 
-def training_examples_tagger2(vocab_words, vocab_tags, gold_data, tagger, batch_size=100, max_len=20):
+def training_examples_tagger2(vocab_words, vocab_tags, gold_data, tagger, batch_size=101, max_len=20):
     assert batch_size > 0 and max_len > 0
     # max sequence length
     x = torch.zeros((batch_size, max_len)).long()
     y = torch.zeros((batch_size, max_len)).long()
     count = 0
     for sentence in gold_data:
-        words = torch.Tensor(list(map(lambda x: vocab_words[x[0]], sentence))).long()
+        words = torch.Tensor(list(map(lambda x: vocab_words[x[0]] if x[0] in vocab_words else 1, sentence))).long()
         labels = torch.Tensor(list(map(lambda x: vocab_tags[x[1]], sentence))).long()
-        
         # pad to max len
-        x[count,-len(words):] = words[:max_len]
-        y[count,-len(labels):] = labels[:max_len]
+        x[count,:len(words)] = words[:max_len]
+        y[count,:len(labels)] = labels[:max_len]
         
         count += 1
         

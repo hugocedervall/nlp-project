@@ -4,10 +4,10 @@ UNK = '<unk>'
 def make_vocabs(gold_data):
     word_vocab = {}
     label_vocab = {}
-    
+    word_vocab[PAD] = 0
     word_vocab[UNK] = 1
 
-    word_vocab[PAD] = 0
+    
     label_vocab[PAD] = 0
     for sentence in gold_data:
         for word, label, _ in sentence:

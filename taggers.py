@@ -53,17 +53,19 @@ class FixedWindowTagger(Tagger):
         return out
     
     def predict_sentence(self, words):
-        #print(words)
         # mapping from id to tag string
         id_to_tag = list(self.vocab_tags.keys())
         
         sentence = [self.vocab_words[word[0]] if word[0] in self.vocab_words else 1 for word in words]
-        input_sent = torch.tensor(sentence).unsqueeze(0).to(device)
-        print(input_sent.shape)
-        # size (batch_size, seq_len, classes)
-        pred = self.model.forward(input_sent).squeeze(0)
-        pred_tags = torch.argmax(pred, dim=1)
-        print(pred_tags.shape)
         
+        input_sent = torch.tensor(sentence).unsqueeze(0).to(device)
+        #print(input_sent.shape)
+        #print(input_sent)
+        # size (batch_size, seq_len, classes)
+        pred = self.model.forward(input_sent, True)
+        pred = pred.reshape((pred.shape[0], pred.shape[2], pred.shape[1]))
+        pred_tags = torch.argmax(pred, dim=1).squeeze(0)
+        #print(pred_tags)
         pred_tags_list = pred_tags.tolist()
+       
         return list(map(lambda tag : id_to_tag[tag], pred_tags_list))
