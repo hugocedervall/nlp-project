@@ -2,7 +2,7 @@ import copy
 import torch
 import torch.nn as nn
 
-from window_models import FixedWindowModel
+from window_models import FixedWindowModel, LSTMParserModel
 
 PAD = '<pad>'
 UNK = '<unk>'
@@ -52,12 +52,14 @@ class ArcStandardParser(Parser):
 
 class FixedWindowParser(ArcStandardParser):
 
-    def __init__(self, vocab_words, vocab_tags, word_dim=50, tag_dim=10, hidden_dim=180):
-        embedding_specs = [(5, len(vocab_words), word_dim), (9, len(vocab_tags), tag_dim)]
+    def __init__(self, vocab_words, vocab_tags, word_dim=50, tag_dim=50, hidden_dim=180):
+        # First number in embedding spec now represents nr words from lstm and nr tag embeddings.
+        embedding_specs = [(5, len(vocab_words), word_dim), (4, len(vocab_tags), tag_dim)]
         output_dim = 4  # nr of possible moves + error class
         self.vocab_words = vocab_words
         self.vocab_tags = vocab_tags
-        self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
+        # self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
+        self.model = LSTMParserModel(embedding_specs, hidden_dim, output_dim)
 
     def find_child_feature(self, heads, word):
         first = second = self.vocab_tags[PAD]
@@ -78,63 +80,64 @@ class FixedWindowParser(ArcStandardParser):
         ###### SURROUNDING WORDS #######
 
         # 1st word in stack
-        if len(stack) > 0: feats.append(words[stack[-1]])
-        else: feats.append(self.vocab_words[PAD])
+        if len(stack) > 0: feats.append(stack[-1])
+        else: feats.append(-1)
 
         # 2nd word in stack
-        if len(stack) > 1: feats.append(words[stack[-2]])
-        else: feats.append(self.vocab_words[PAD])
+        if len(stack) > 1: feats.append(stack[-2])
+        else: feats.append(-1)
 
         # 3rd word in stack
-        if len(stack) > 2: feats.append(words[stack[-3]])
-        else: feats.append(self.vocab_words[PAD])
+        if len(stack) > 2: feats.append(stack[-3])
+        else: feats.append(-1)
 
         # 1st word in buffer
-        if buffer < len(heads): feats.append(words[buffer])
-        else: feats.append(self.vocab_words[PAD])
+        if buffer < len(heads): feats.append(buffer)
+        else: feats.append(-1)
 
-        if buffer+1 < len(heads): feats.append(words[buffer])
-        else: feats.append(self.vocab_words[PAD])
+        # 2nd word in buffer
+        if buffer+1 < len(heads): feats.append(buffer)
+        else: feats.append(-1)
 
         ###### TAGS OF SURROUNDING WORDS #######
         # 1st word in stack
-        if len(stack) > 0: feats.append(tags[stack[-1]])
-        else: feats.append(self.vocab_tags[PAD])
-
-        # 2nd word in stack
-        if len(stack) > 1: feats.append(tags[stack[-2]])
-        else: feats.append(self.vocab_tags[PAD])
-
-        # 3rd word in stack
-        if len(stack) > 2: feats.append(tags[stack[-3]])
-        else: feats.append(self.vocab_tags[PAD])
-
-        # 1st word in buffer
-        if buffer < len(heads): feats.append(tags[buffer])
-        else: feats.append(self.vocab_tags[PAD])
-
-        if buffer + 1 < len(heads): feats.append(tags[buffer+1])
-        else: feats.append(self.vocab_tags[PAD])
+        # if len(stack) > 0: feats.append(stack[-1])
+        # else: feats.append(-1)
+        #
+        # # 2nd word in stack
+        # if len(stack) > 1: feats.append(stack[-2])
+        # else: feats.append(-1)
+        #
+        # # 3rd word in stack
+        # if len(stack) > 2: feats.append(stack[-3])
+        # else: feats.append(-1)
+        #
+        # # 1st word in buffer
+        # if buffer < len(heads): feats.append(buffer)
+        # else: feats.append(-1)
+        #
+        # if buffer + 1 < len(heads): feats.append(buffer+1)
+        # else: feats.append(-1)
 
         ###### TAGS OF CHILD FEATURES #######
 
         # tags of left-most and right-most child of 1st word in stack
         if len(stack) > 0:
             first, second = self.find_child_feature(heads, stack[-1])
-            feats.append(tags[first])
-            feats.append(tags[second])
+            feats.append(first)
+            feats.append(second)
         else:
-            feats.append(self.vocab_tags[PAD])
-            feats.append(self.vocab_tags[PAD])
+            feats.append(-1)
+            feats.append(-1)
 
         # tags of left-most and right-most child of 2nd word in stack
         if len(stack) > 1:
             first, second = self.find_child_feature(heads, stack[-2])
-            feats.append(tags[first])
-            feats.append(tags[second])
+            feats.append(first)
+            feats.append(second)
         else:
-            feats.append(self.vocab_tags[PAD])
-            feats.append(self.vocab_tags[PAD])
+            feats.append(-1)
+            feats.append(-1)
 
         return torch.tensor(feats)
 
@@ -165,11 +168,10 @@ class FixedWindowParser(ArcStandardParser):
         branches = [(config, 0)]  # init to 0 if beam greedy search. Init to 1 if best-first search
 
         while not self.is_final_config(branches[0][0]):
-
             new_branches = []
             for branch_config, branch_score in branches:
                 feats = self.featurize(word_ids, tag_ids, branch_config)
-                pred_moves = self.beam_argmax(branch_config, self.model.forward(feats.unsqueeze(dim=0)),
+                pred_moves = self.beam_argmax(branch_config, self.model.forward(word_ids, tag_ids, feats.unsqueeze(dim=0)),
                                               split_width=split_width)
 
                 # TODO kan effektiviseras genom att först kolla score sedan räkna ut config
@@ -188,7 +190,7 @@ class FixedWindowParser(ArcStandardParser):
         best_heads = branches[0][0][2]
         return best_heads
 
-    def predict(self, words, tags, split_width=3, beam_width=8, beam_search=True):
+    def predict(self, words, tags, split_width=2, beam_width=2, beam_search=True):
 
         config = self.initial_config(len(words))
         word_ids = [self.vocab_words[word] if word in self.vocab_words else self.vocab_words[UNK] for word in words]
