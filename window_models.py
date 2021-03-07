@@ -171,15 +171,20 @@ class LSTMParserModel(nn.Module):
         out, _ = self.lstm1(word_tag_embs)
         feature_ids = torch.tensor(feature_ids)
 
-        temp = []
-        for i in range(feature_ids.shape[0]):
-            temp.append(out[i, feature_ids[i, :]])
-        lstm_embs = torch.stack(temp)
+        
+        #temp = []
+        inx_batch = torch.repeat_interleave(torch.tensor(range(feature_ids.shape[0])),feature_ids.shape[1]).to(device)
+        inx_emb = feature_ids.reshape(feature_ids.shape[0]*feature_ids.shape[1]).to(device)
+        lstm_embs = out[inx_batch, inx_emb].reshape(feature_ids.shape[0], feature_ids.shape[1], out.shape[2]).to(device)
+        
+        #for i in range(feature_ids.shape[0]):
+        #    temp.append(out[i, feature_ids[i, :]])
+        #lstm_embs = torch.stack(temp)
         #lstm_embs = out[feature_ids[:, :]]
         # lstm_embs = out[feature_ids[:], :]
 
         indices = (feature_ids == -1)
-        lstm_embs[indices] = torch.FloatTensor([0]*360)
+        lstm_embs[indices] = torch.FloatTensor([0]*360).to(device)
         lstm_embs = lstm_embs.view(lstm_embs.shape[0], lstm_embs.shape[1] * lstm_embs.shape[2])
 
         # lstm_embs = self.embeddings[0](features[:, 0: self.embeddingCount[0]])

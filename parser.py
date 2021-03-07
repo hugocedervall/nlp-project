@@ -4,6 +4,9 @@ import torch.nn as nn
 
 from window_models import FixedWindowModel, LSTMParserModel
 
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+
 PAD = '<pad>'
 UNK = '<unk>'
 
@@ -171,7 +174,7 @@ class FixedWindowParser(ArcStandardParser):
             new_branches = []
             for branch_config, branch_score in branches:
                 feats = self.featurize(word_ids, tag_ids, branch_config)
-                pred_moves = self.beam_argmax(branch_config, self.model.forward(word_ids, tag_ids, feats.unsqueeze(dim=0)),
+                pred_moves = self.beam_argmax(branch_config, self.model.forward(torch.tensor(word_ids).unsqueeze(0).to(device), torch.tensor(tag_ids).unsqueeze(0).to(device), feats.unsqueeze(dim=0)),
                                               split_width=split_width)
 
                 # TODO kan effektiviseras genom att först kolla score sedan räkna ut config
@@ -190,8 +193,8 @@ class FixedWindowParser(ArcStandardParser):
         best_heads = branches[0][0][2]
         return best_heads
 
-    def predict(self, words, tags, split_width=2, beam_width=2, beam_search=True):
-
+    def predict(self, words, tags, split_width=2, beam_width=8, beam_search=True):
+        self.model.eval()
         config = self.initial_config(len(words))
         word_ids = [self.vocab_words[word] if word in self.vocab_words else self.vocab_words[UNK] for word in words]
         tag_ids = [self.vocab_tags[tag] if tag in self.vocab_tags else self.vocab_tags[UNK] for tag in tags]

@@ -1,3 +1,4 @@
+
 def uas(parser, gold_data):
     acc = 0
     nr_words = 0
@@ -9,7 +10,7 @@ def uas(parser, gold_data):
             words.append(word)
             labels.append(label)
             heads.append(head)
-            
+        
         nr_words += len(words)-1 # skip psuedo root
         preds = parser.predict(words, labels)
         acc += sum(pred == head for pred, head in zip(preds[1:], heads[1:]))  # skip psuedo root
@@ -25,4 +26,16 @@ def accuracy(tagger, gold_data):
                 correct += 1
             count += 1
         
+    return correct/count
+
+def accuracy_sentences(tagger, gold_data):
+    correct = count = 0
+    for sentence in gold_data:
+        pred = tagger.predict_sentence(sentence)
+        #print(pred)
+        for i in range(len(pred)):
+            #print(pred[i], sentence[i][1])
+            if sentence[i][1] == pred[i]:
+                correct += 1
+            count += 1
     return correct/count

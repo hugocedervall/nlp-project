@@ -116,7 +116,9 @@ def training_examples_parser(vocab_words, vocab_tags, gold_data, parser, batch_s
         i += 1
     # yield last batch if not full       
     if len(feats) > 0:
-        yield torch.stack(sentences), torch.stack(sentence_tags), torch.tensor(feats_i), torch.stack(
-            feats), torch.tensor(ys)
+        sentences = [torch.tensor(s + [vocab_words['<pad>']] * (max_len - len(s))) for s in sentences] # .to(self.device)
+        sentence_tags = [torch.tensor(s + [vocab_tags['<pad>']] * (max_len - len(s))) for s in sentence_tags]  # .to(self.device)
+        yield torch.stack(sentences), torch.stack(sentence_tags), torch.tensor(feats_i), torch.stack(feats), torch.tensor(ys)
+
 
 
