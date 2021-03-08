@@ -27,7 +27,10 @@ class ArcStandardParser(Parser):
     @staticmethod
     def valid_moves(config):
         moves = []
-        if len(config[1]) >= 2: moves += [ArcStandardParser.LA, ArcStandardParser.RA]
+        if len(config[1]) >= 2: 
+            moves.append(ArcStandardParser.RA)
+            if (config[1][-2] != 0): moves.append(ArcStandardParser.LA)
+
         if config[0] < len(config[2]): moves.append(ArcStandardParser.SH)
         return moves
 
@@ -55,14 +58,14 @@ class ArcStandardParser(Parser):
 
 class FixedWindowParser(ArcStandardParser):
 
-    def __init__(self, vocab_words, vocab_tags, word_dim=50, tag_dim=50, hidden_dim=180):
+    def __init__(self, vocab_words, vocab_tags, word_dim=100, tag_dim=25, lstm_dim = 180, hidden_dim=100):
         # First number in embedding spec now represents nr words from lstm and nr tag embeddings.
-        embedding_specs = [(5, len(vocab_words), word_dim), (4, len(vocab_tags), tag_dim)]
+        embedding_specs = [(4, len(vocab_words), word_dim), (4, len(vocab_tags), tag_dim)]
         output_dim = 4  # nr of possible moves + error class
         self.vocab_words = vocab_words
         self.vocab_tags = vocab_tags
         # self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
-        self.model = LSTMParserModel(embedding_specs, hidden_dim, output_dim)
+        self.model = LSTMParserModel(embedding_specs, lstm_dim, hidden_dim, output_dim)
 
     def find_child_feature(self, heads, word):
         first = second = self.vocab_tags[PAD]
@@ -98,9 +101,9 @@ class FixedWindowParser(ArcStandardParser):
         if buffer < len(heads): feats.append(buffer)
         else: feats.append(-1)
 
-        # 2nd word in buffer
-        if buffer+1 < len(heads): feats.append(buffer)
-        else: feats.append(-1)
+        # # 2nd word in buffer
+        # if buffer+1 < len(heads): feats.append(buffer)
+        # else: feats.append(-1)
 
         ###### TAGS OF SURROUNDING WORDS #######
         # 1st word in stack
@@ -193,7 +196,7 @@ class FixedWindowParser(ArcStandardParser):
         best_heads = branches[0][0][2]
         return best_heads
 
-    def predict(self, words, tags, split_width=2, beam_width=8, beam_search=True):
+    def predict(self, words, tags, split_width=2, beam_width=2, beam_search=True):
         self.model.eval()
         config = self.initial_config(len(words))
         word_ids = [self.vocab_words[word] if word in self.vocab_words else self.vocab_words[UNK] for word in words]

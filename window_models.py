@@ -121,19 +121,22 @@ class LstmTaggerModel(nn.Module):
 
 class LSTMParserModel(nn.Module):
 
-    def __init__(self, embedding_specs, hidden_dim, output_dim, pretrained=False, frozen=False):
+    def __init__(self, embedding_specs, lstm_dim, hidden_dim,  output_dim, pretrained=False, frozen=False):
         super().__init__()
         self.embeddings = nn.ModuleList()
         self.embeddingCount = []
         self.emb_dim_tot = 0
         self.feature_count = 0
         self.emb_dims = []
+        self.lstm_dim = lstm_dim
+        dropout = 0.3
+        lstm_layers = 2
 
         for nr_feats, vocab_size, emb_dim in embedding_specs:
             self.emb_dim_tot += emb_dim * nr_feats
             self.emb_dims.append(emb_dim)
             self.feature_count += nr_feats
-            embedding = nn.Embedding(vocab_size, emb_dim)
+            embedding = nn.Embedding(vocab_size, emb_dim, padding_idx = 0)
             nn.init.normal_(embedding.weight, 0, 0.01)
             self.embeddings.append(embedding)
             self.embeddingCount.append(nr_feats)
@@ -143,13 +146,12 @@ class LSTMParserModel(nn.Module):
         # Size of word and tag embedding concatenated.
         lstm_input_dim = sum(self.emb_dims)
 
-        self.lstm1 = nn.LSTM(lstm_input_dim, hidden_dim, bidirectional=True, batch_first=True, num_layers=2,
-                             dropout=0.3)
-        self.bnorm = nn.BatchNorm1d(2 * hidden_dim * self.embeddingCount[0])
-        #self.lin1 = nn.Linear(2 * hidden_dim + children_emb_dim, hidden_dim)
-        self.lin1 = nn.Linear(2 * hidden_dim * self.embeddingCount[0], hidden_dim)
+        # TODO: dubbel kolla device grejer
+        self.lstm1 = nn.LSTM(lstm_input_dim, lstm_dim, bidirectional=True, batch_first=True, 
+                             num_layers=lstm_layers, dropout=dropout)
+        self.bnorm = nn.BatchNorm1d(2 * lstm_dim * self.embeddingCount[0])
+        self.lin1 = nn.Linear(2 * lstm_dim * self.embeddingCount[0], hidden_dim)
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.5)
         self.lin2 = nn.Linear(hidden_dim, output_dim)
         self.softmax = nn.Softmax()
 
@@ -162,29 +164,33 @@ class LSTMParserModel(nn.Module):
 
         # Pair word embs with corresponding tag embs by using stack and view:
         # [word_emb1, word_emb2, word_emb3] &  [tag_emb1, tag_emb2, tag_emb3] ->   [[word_emb1, tag_emb1], [word_emb2, tag_emb2], [word_emb3, tag_emb3]]
-        word_tag_embs = torch.stack((word_embs, tag_embs), dim=1)
-        word_tag_embs = torch.stack((word_tag_embs[:, 0], word_tag_embs[:, 1]), dim=2)
-        word_tag_embs = word_tag_embs.view(word_tag_embs.shape[0], word_tag_embs.shape[1],
-                           word_tag_embs.shape[2] * word_tag_embs.shape[3])
+        batch_size, sentence_len, word_emb_dim = word_embs.shape
+        tag_emb_dim = tag_embs.shape[2]
 
+        tempw = word_embs.view(batch_size*sentence_len, word_emb_dim)
+        tempt = tag_embs.view(batch_size * sentence_len, tag_emb_dim)
+        word_tag_embs = torch.cat((tempw, tempt), dim=1)
+        word_tag_embs = word_tag_embs.view(batch_size, sentence_len, word_emb_dim + tag_emb_dim).to(device)
+        # word_tag_embs = torch.stack((word_embs, tag_embs), dim=1)
+        # word_tag_embs = torch.stack((word_tag_embs[:, 0], word_tag_embs[:, 1]), dim=2)
+        # word_tag_embs = word_tag_embs.view(word_tag_embs.shape[0], word_tag_embs.shape[1],
+        #                    word_tag_embs.shape[2] * word_tag_embs.shape[3])
 
         out, _ = self.lstm1(word_tag_embs)
         feature_ids = torch.tensor(feature_ids)
 
-        
-        #temp = []
         inx_batch = torch.repeat_interleave(torch.tensor(range(feature_ids.shape[0])),feature_ids.shape[1]).to(device)
         inx_emb = feature_ids.reshape(feature_ids.shape[0]*feature_ids.shape[1]).to(device)
         lstm_embs = out[inx_batch, inx_emb].reshape(feature_ids.shape[0], feature_ids.shape[1], out.shape[2]).to(device)
         
-        #for i in range(feature_ids.shape[0]):
+        # temp = []
+        # for i in range(feature_ids.shape[0]):
         #    temp.append(out[i, feature_ids[i, :]])
-        #lstm_embs = torch.stack(temp)
-        #lstm_embs = out[feature_ids[:, :]]
-        # lstm_embs = out[feature_ids[:], :]
+        # lstm_embs = torch.stack(temp)
+        # lstm_embs = lstm_embs.to(device)
 
         indices = (feature_ids == -1)
-        lstm_embs[indices] = torch.FloatTensor([0]*360).to(device)
+        lstm_embs[indices] = torch.FloatTensor([0]*2*self.lstm_dim).to(device)
         lstm_embs = lstm_embs.view(lstm_embs.shape[0], lstm_embs.shape[1] * lstm_embs.shape[2])
 
         # lstm_embs = self.embeddings[0](features[:, 0: self.embeddingCount[0]])

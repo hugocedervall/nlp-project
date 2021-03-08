@@ -1,5 +1,5 @@
 
-def uas(parser, gold_data):
+def uas(_parser, gold_data):
     acc = 0
     nr_words = 0
     for sentence in gold_data:
@@ -12,7 +12,7 @@ def uas(parser, gold_data):
             heads.append(head)
         
         nr_words += len(words)-1 # skip psuedo root
-        preds = parser.predict(words, labels)
+        preds = _parser.predict(words, labels)
         acc += sum(pred == head for pred, head in zip(preds[1:], heads[1:]))  # skip psuedo root
     return acc/nr_words
 
