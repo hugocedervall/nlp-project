@@ -143,7 +143,7 @@ class FixedWindowParser(ArcStandardParser):
         best_heads = branches[0][0][2]
         return best_heads
 
-    def predict(self, words, tags, split_width=2, beam_width=2, beam_search=True):
+    def predict(self, words, tags, split_width=2, beam_width=16, beam_search=True):
         self.model.eval()
         config = self.initial_config(len(words))
         word_ids = [self.vocab_words[word] if word in self.vocab_words else self.vocab_words[UNK] for word in words]
