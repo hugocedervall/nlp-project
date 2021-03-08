@@ -64,7 +64,7 @@ class FixedWindowParser(ArcStandardParser):
         self.vocab_tags = vocab_tags
         nr_feats = 5
         self.model = LSTMParserModel(word_dim, len(vocab_words), tag_dim, len(vocab_tags), nr_feats, lstm_dim, 
-                                     hidden_dim, output_dim, dropout)
+                                     hidden_dim, output_dim, dropout).to(device)
 
     def featurize(self, words, tags, config):
         feats = []
