@@ -27,7 +27,7 @@ class ArcStandardParser(Parser):
     @staticmethod
     def valid_moves(config):
         moves = []
-        if len(config[1]) >= 2: 
+        if len(config[1]) >= 2:
             moves.append(ArcStandardParser.RA)
             if (config[1][-2] != 0): moves.append(ArcStandardParser.LA)
 
@@ -58,33 +58,19 @@ class ArcStandardParser(Parser):
 
 class FixedWindowParser(ArcStandardParser):
 
-    def __init__(self, vocab_words, vocab_tags, word_dim=100, tag_dim=25, lstm_dim = 180, hidden_dim=100):
-        # First number in embedding spec now represents nr words from lstm and nr tag embeddings.
-        embedding_specs = [(4, len(vocab_words), word_dim), (4, len(vocab_tags), tag_dim)]
+    def __init__(self,vocab_words,vocab_tags, word_dim=100, tag_dim=25, lstm_dim = 180, hidden_dim=180, dropout = 0.3):
         output_dim = 4  # nr of possible moves + error class
         self.vocab_words = vocab_words
         self.vocab_tags = vocab_tags
-        # self.model = FixedWindowModel(embedding_specs, hidden_dim, output_dim)
-        self.model = LSTMParserModel(embedding_specs, lstm_dim, hidden_dim, output_dim)
-
-    def find_child_feature(self, heads, word):
-        first = second = self.vocab_tags[PAD]
-        for child, parent in enumerate(heads):
-            if parent == word:
-                if first == PAD:
-                    first = child
-                else:
-                    second = child
-        return first, second
+        nr_feats = 5
+        self.model = LSTMParserModel(word_dim, len(vocab_words), tag_dim, len(vocab_tags), nr_feats, lstm_dim, 
+                                     hidden_dim, output_dim, dropout)
 
     def featurize(self, words, tags, config):
-        """14 different features based on https://www.aclweb.org/anthology/D08-1059/"""
-
         feats = []
         buffer, stack, heads = config
 
         ###### SURROUNDING WORDS #######
-
         # 1st word in stack
         if len(stack) > 0: feats.append(stack[-1])
         else: feats.append(-1)
@@ -101,49 +87,9 @@ class FixedWindowParser(ArcStandardParser):
         if buffer < len(heads): feats.append(buffer)
         else: feats.append(-1)
 
-        # # 2nd word in buffer
-        # if buffer+1 < len(heads): feats.append(buffer)
-        # else: feats.append(-1)
-
-        ###### TAGS OF SURROUNDING WORDS #######
-        # 1st word in stack
-        # if len(stack) > 0: feats.append(stack[-1])
-        # else: feats.append(-1)
-        #
-        # # 2nd word in stack
-        # if len(stack) > 1: feats.append(stack[-2])
-        # else: feats.append(-1)
-        #
-        # # 3rd word in stack
-        # if len(stack) > 2: feats.append(stack[-3])
-        # else: feats.append(-1)
-        #
-        # # 1st word in buffer
-        # if buffer < len(heads): feats.append(buffer)
-        # else: feats.append(-1)
-        #
-        # if buffer + 1 < len(heads): feats.append(buffer+1)
-        # else: feats.append(-1)
-
-        ###### TAGS OF CHILD FEATURES #######
-
-        # tags of left-most and right-most child of 1st word in stack
-        if len(stack) > 0:
-            first, second = self.find_child_feature(heads, stack[-1])
-            feats.append(first)
-            feats.append(second)
-        else:
-            feats.append(-1)
-            feats.append(-1)
-
-        # tags of left-most and right-most child of 2nd word in stack
-        if len(stack) > 1:
-            first, second = self.find_child_feature(heads, stack[-2])
-            feats.append(first)
-            feats.append(second)
-        else:
-            feats.append(-1)
-            feats.append(-1)
+        # 2nd word in buffer
+        if buffer+1 < len(heads): feats.append(buffer)
+        else: feats.append(-1)
 
         return torch.tensor(feats)
 
@@ -177,17 +123,18 @@ class FixedWindowParser(ArcStandardParser):
             new_branches = []
             for branch_config, branch_score in branches:
                 feats = self.featurize(word_ids, tag_ids, branch_config)
-                pred_moves = self.beam_argmax(branch_config, self.model.forward(torch.tensor(word_ids).unsqueeze(0).to(device), torch.tensor(tag_ids).unsqueeze(0).to(device), feats.unsqueeze(dim=0)),
+                pred_moves = self.beam_argmax(branch_config,
+                                              self.model.forward(torch.tensor(word_ids).unsqueeze(0).to(device),
+                                                                 torch.tensor(tag_ids).unsqueeze(0).to(device),
+                                                                 feats.unsqueeze(dim=0)),
                                               split_width=split_width)
 
                 # TODO kan effektiviseras genom att först kolla score sedan räkna ut config
-
                 for pred in pred_moves:
                     score = pred[0]
                     move = pred[1]
                     new_config = self.next_config(branch_config, move)
-                    new_branches.append((new_config,
-                                         branch_score + score))  # use '+' if beam greedy search. use '*' if best-first search
+                    new_branches.append((new_config, branch_score + score))
 
             new_branches.sort(key=lambda x: x[1], reverse=True)  # sort on score
             branches = new_branches[0:min(len(new_branches), beam_width)]
