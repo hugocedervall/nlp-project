@@ -160,6 +160,9 @@ class FixedWindowParser(ArcStandardParser):
                 best_move = i
         return best_move
 
+    def best_first_search(self, config, word_ids, tag_ids):
+        return
+
     def beam_search(self, config, word_ids, tag_ids, split_width, beam_width):
         # branches is a list of (config, score) tuples
         branches = [(config, 0)]  # init to 0 if beam greedy search. Init to 1 if best-first search
@@ -195,3 +198,4 @@ class FixedWindowParser(ArcStandardParser):
         tag_ids = [self.vocab_tags[tag] if tag in self.vocab_tags else self.vocab_tags[UNK] for tag in tags]
 
         return self.beam_search(config, word_ids, tag_ids, split_width, beam_width)
+        #return self.best_first_search(config, word_ids, tag_ids)

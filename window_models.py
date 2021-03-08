@@ -46,8 +46,10 @@ class FixedWindowModel(nn.Module):
 
         # feed forward
         self.linear1 = nn.Linear(concat_dim, hidden_dim)
+        self.linear15 = nn.Linear(hidden_dim, hidden_dim//2)
+        self.dropout = nn.Dropout(0.1)
         self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(hidden_dim, output_dim)
+        self.linear2 = nn.Linear(hidden_dim//2, output_dim)
 
     def forward(self, features):
         batch_size = len(features)
@@ -65,7 +67,9 @@ class FixedWindowModel(nn.Module):
         # concat_embeddings = torch.cat(temp, dim=1).view(batch_size, self.concat_emb_len)
 
         res = self.linear1(concat_embeddings)
+        res = self.dropout(res)
         res = self.relu(res)
+        res = self.linear15(res)
         res = self.linear2(res)
 
         return res
