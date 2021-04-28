@@ -1,6 +1,6 @@
 import torch
 
-from parser import ArcStandardParser
+from syntax_parser import ArcStandardParser
 
 # ===========================
 # Functions for parser (L3)

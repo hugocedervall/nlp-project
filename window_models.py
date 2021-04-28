@@ -121,80 +121,54 @@ class LstmTaggerModel(nn.Module):
 
 class LSTMParserModel(nn.Module):
 
-    def __init__(self, embedding_specs, hidden_dim, output_dim, pretrained=False, frozen=False):
+    def __init__(self, word_emd_dim, vocab_word_size, tag_emb_dim, vocab_tag_size, nr_feats, lstm_dim, hidden_dim, 
+                 output_dim, dropout, pretrained=False, frozen=False):
         super().__init__()
         self.embeddings = nn.ModuleList()
-        self.embeddingCount = []
-        self.emb_dim_tot = 0
-        self.feature_count = 0
-        self.emb_dims = []
+        self.lstm_dim = lstm_dim
 
-        for nr_feats, vocab_size, emb_dim in embedding_specs:
-            self.emb_dim_tot += emb_dim * nr_feats
-            self.emb_dims.append(emb_dim)
-            self.feature_count += nr_feats
-            embedding = nn.Embedding(vocab_size, emb_dim)
-            nn.init.normal_(embedding.weight, 0, 0.01)
-            self.embeddings.append(embedding)
-            self.embeddingCount.append(nr_feats)
+        self.word_embs = nn.Embedding(vocab_word_size, word_emd_dim, padding_idx=0)
+        self.tag_embs = nn.Embedding(vocab_tag_size, tag_emb_dim, padding_idx=0)
+        nn.init.normal_(self.word_embs.weight, 0, 0.01)
+        nn.init.normal_(self.tag_embs.weight, 0, 0.01)
 
-        # Size of tag embeddings that are not sent through lstm
-        children_emb_dim = self.embeddingCount[1] * self.emb_dims[1]
-        # Size of word and tag embedding concatenated.
-        lstm_input_dim = sum(self.emb_dims)
-
-        self.lstm1 = nn.LSTM(lstm_input_dim, hidden_dim, bidirectional=True, batch_first=True, num_layers=2,
-                             dropout=0.3)
-        self.bnorm = nn.BatchNorm1d(2 * hidden_dim * self.embeddingCount[0])
-        #self.lin1 = nn.Linear(2 * hidden_dim + children_emb_dim, hidden_dim)
-        self.lin1 = nn.Linear(2 * hidden_dim * self.embeddingCount[0], hidden_dim)
+        self.lstm1 = nn.LSTM(word_emd_dim + tag_emb_dim, lstm_dim, bidirectional=True, batch_first=True, 
+                             num_layers=2, dropout=dropout)
+        self.lin1 = nn.Linear(2 * lstm_dim * nr_feats, hidden_dim)
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.5)
         self.lin2 = nn.Linear(hidden_dim, output_dim)
-        self.softmax = nn.Softmax()
 
     def forward(self, word_ids, tag_ids, feature_ids):
         # TODO Lstm ignore padding: https://galhever.medium.com/sentiment-analysis-with-pytorch-part-4-lstm-bilstm-model-84447f6c4525
-        feature_ids = feature_ids[:, 0:self.embeddingCount[0]]
 
-        word_embs = self.embeddings[0](word_ids)
-        tag_embs = self.embeddings[1](tag_ids)
+        word_embs = self.word_embs(word_ids)
+        tag_embs = self.tag_embs(tag_ids)
 
-        # Pair word embs with corresponding tag embs by using stack and view:
-        # [word_emb1, word_emb2, word_emb3] &  [tag_emb1, tag_emb2, tag_emb3] ->   [[word_emb1, tag_emb1], [word_emb2, tag_emb2], [word_emb3, tag_emb3]]
-        word_tag_embs = torch.stack((word_embs, tag_embs), dim=1)
-        word_tag_embs = torch.stack((word_tag_embs[:, 0], word_tag_embs[:, 1]), dim=2)
-        word_tag_embs = word_tag_embs.view(word_tag_embs.shape[0], word_tag_embs.shape[1],
-                           word_tag_embs.shape[2] * word_tag_embs.shape[3])
+        # Pair word embs with corresponding tag embs by using view and cat:
+        # [word_emb1, word_emb2, word_emb3] &  [tag_emb1, tag_emb2, tag_emb3] ->   
+        # [[word_emb1, tag_emb1], [word_emb2, tag_emb2], [word_emb3, tag_emb3]]
+        batch_size, sentence_len, word_emb_dim = word_embs.shape
+        tag_emb_dim = tag_embs.shape[2]
+        tempw = word_embs.view(batch_size*sentence_len, word_emb_dim)
+        tempt = tag_embs.view(batch_size * sentence_len, tag_emb_dim)
+        word_tag_embs = torch.cat((tempw, tempt), dim=1)
+        word_tag_embs = word_tag_embs.view(batch_size, sentence_len, word_emb_dim + tag_emb_dim).to(device)
 
-
+        # Give entire sentence to bi-lstm 
         out, _ = self.lstm1(word_tag_embs)
-        feature_ids = torch.tensor(feature_ids)
 
-        
-        #temp = []
+        # Filter out only the features specified in feature_ids from the lstm output
         inx_batch = torch.repeat_interleave(torch.tensor(range(feature_ids.shape[0])),feature_ids.shape[1]).to(device)
         inx_emb = feature_ids.reshape(feature_ids.shape[0]*feature_ids.shape[1]).to(device)
         lstm_embs = out[inx_batch, inx_emb].reshape(feature_ids.shape[0], feature_ids.shape[1], out.shape[2]).to(device)
-        
-        #for i in range(feature_ids.shape[0]):
-        #    temp.append(out[i, feature_ids[i, :]])
-        #lstm_embs = torch.stack(temp)
-        #lstm_embs = out[feature_ids[:, :]]
-        # lstm_embs = out[feature_ids[:], :]
 
+        # Any features that don't exist (indicated by -1) are padded to zeros
         indices = (feature_ids == -1)
-        lstm_embs[indices] = torch.FloatTensor([0]*360).to(device)
+        lstm_embs[indices] = torch.FloatTensor([0] * 2 * self.lstm_dim).to(device)
         lstm_embs = lstm_embs.view(lstm_embs.shape[0], lstm_embs.shape[1] * lstm_embs.shape[2])
 
-        # lstm_embs = self.embeddings[0](features[:, 0: self.embeddingCount[0]])
-        # tag_embs = self.embeddings[1](features[:, self.embeddingCount[0]:])
-        # lstm_tags = tag_embs[0:self.embeddingCount[0]]  # Tags that we want to pair with a word embedding
-        # children_tags = tag_embs[self.embeddingCount[0]:]  # Tags of children, not paired with words
-        #res = torch.cat((out, children_tags), dim=1)  # Add children embeddings to feature vector
-
+        # Pass through FFN
         res = self.lin1(lstm_embs)
-        #res = self.bnorm(res)
         res = self.relu(res)
         res = self.lin2(res)
 
